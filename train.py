@@ -20,13 +20,14 @@ def main():
         shutil.rmtree(LOG_DIR, ignore_errors=True)
         os.mkdir(LOG_DIR)
     ### Make graph with coexpression data
-    graph = load_humanbase_coex_data("data/tooth_top_0.15")
+    graph = load_humanbase_coex_data("data/tooth_top_0.3")
 
     ### Give score features that represent relations with a disease for each vertex.
     #graph = update_disease_features_coex("data/Periodontitis_genes.csv", graph)
-    graph = update_disease_features_coex("data/diabetes_genes.csv", graph)
+    #graph = update_disease_features_coex("data/diabetes_genes.csv", graph)
     #graph = update_disease_features_coex("data/rheumatoid_genes.csv", graph)
     graph = update_gene_features_coex("data/all_gene_disease_associations.tsv", graph)
+    graph = update_disease_associations(graph)
     
     coex_graph = Coex_graph(graph, "perio_graph", vertex_feature_num=3)
     
@@ -46,9 +47,10 @@ def main():
     
     loss_mean = 0.0
     test_loss_mean = 0.0
-    coex_graph.feed_data_load(coex_graph.random_node(),(FLAGS.n1_features, FLAGS.n2_features))
-    coex_graph.vis_sampled_nodes()
-    exit()
+    #while coex_graph.feed_data_load(coex_graph.random_node(),(FLAGS.neighbors_1, FLAGS.neighbors_2)) == None:
+    #    pass
+    #coex_graph.vis_sampled_nodes()
+    
     #### Training.
     for i in range(FLAGS.epochs):
         train_dict = mini_batch_load(train_nodes, coex_graph, batch_size=FLAGS.batch_size)
@@ -65,17 +67,19 @@ def main():
             logger.info('Generation # {}. Train loss: {:.4f} , Test loss : {:.4f}'
                         .format(i+1, float(loss_mean/FLAGS.eval_every), float(test_loss/FLAGS.eval_every)))
             test_examples = list(test_dict.values())
-            pos_samples = 0
-            for j in range(FLAGS.batch_size):
-                if float(test_examples[0][j]) > 0.0:
-                    print(test_preds[j], test_examples[0][j])
-                    pos_samples += 1
-            j = 0
-            while pos_samples > 0 and j < FLAGS.batch_size:
-                if float(test_examples[0][j]) == 0.0:
-                    print(test_preds[j], test_examples[0][j])
-                    pos_samples -= 1
-                j += 1
+            print(test_preds[0])
+            print(test_examples[0][0])
+            #pos_samples = 0
+            #for j in range(FLAGS.batch_size):
+            #    if float(test_examples[0][j]) > 0.0:
+            #        print(test_preds[j], test_examples[0][j])
+            #        pos_samples += 1
+            #j = 0
+            #while pos_samples > 0 and j < FLAGS.batch_size:
+            #    if float(test_examples[0][j]) == 0.0:
+            #        print(test_preds[j], test_examples[0][j])
+            #        pos_samples -= 1
+            #    j += 1
             loss_mean = 0.0
             test_loss_mean = 0.0
         writer.add_summary(summary, i)
@@ -89,15 +93,16 @@ def main():
         test_examples = list(test_dict.values())
         pos_samples = 0
         for k in range(FLAGS.batch_size):
-            if float(test_examples[0][k]) > 0.0:
-                test_points.append((test_preds[k], test_examples[0][k]))
-                pos_samples += 1
-        k = 0
-        while pos_samples > 0 and k < FLAGS.batch_size:
-            if float(test_examples[0][k]) == 0.0:
-                test_points.append((test_preds[k], test_examples[0][k]))
-                pos_samples -= 1
-            k += 1
+            #if float(test_examples[0][k]) > 0.0:
+            #    test_points.append((test_preds[k], test_examples[0][k]))
+            #    pos_samples += 1
+            test_points.append((test_preds[k], test_examples[0][k]))
+        #k = 0
+        #while pos_samples > 0 and k < FLAGS.batch_size:
+        #    if float(test_examples[0][k]) == 0.0:
+        #        test_points.append((test_preds[k], test_examples[0][k]))
+        #        pos_samples -= 1
+        #    k += 1
         bar.update(j)
     
     output_file = open("samples.txt",'w')

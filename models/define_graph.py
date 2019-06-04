@@ -2,7 +2,46 @@ import networkx as nx
 import numpy as np
 import random
 import matplotlib.pyplot as plt
+from itertools import count
 
+def visualize_network(net, center, first, edge_width_scale=1):
+    """
+    
+    """
+    pos = nx.spring_layout(net)
+    weight_list = []
+    for node1, node2, data in net.edges(data=True):
+        weight_list.append(data['weight'])
+    weight_set = set(weight_list)
+    
+    #i = 0
+    #for w in weight_set:
+    #    print(i)
+    #    weighted_edges = [(node1, node2) for (node1, node2, edge_attr) in net.edges(data=True) if edge_attr['weight']==w]
+    #    width = edge_width_scale*w*len(net)/sum(weight_set)
+    #    nx.draw_networkx_edges(net, pos, edge_list=weighted_edges)
+    #    i += 1
+    second = list(set(net.nodes()) - set(center) - set(first))
+    
+    nodes = net.nodes()
+    groups = set(nx.get_node_attributes(net,'diabetes').values())
+    mapping = dict(zip(sorted(groups), count()))
+    colors = [mapping[net.node[n]['diabetes']] for n in nodes]
+    
+    
+    plt.figure(figsize=(30,30))
+    nx.draw_networkx_edges(net, pos, alpha=0.3)#, edge_list=weighted_edges)
+    #nx.draw_networkx_nodes(net, pos, nodelist=second, node_size=20, node_color='r')
+    #nx.draw_networkx_nodes(net, pos, nodelist=[center], node_size=20, node_color='b')
+    #nx.draw_networkx_nodes(net, pos, nodelist=first, node_size=20, node_color='g')
+    nx.draw_networkx_nodes(net, pos, nodelist=nodes, node_color=colors, node_size='50', cmap=plt.cm.jet)
+    
+    plt.colorbar(nc)
+    plt.axis('off')
+    plt.show()
+    plt.savefig('visual_sample')
+    
+    
 class Coex_graph():
     def __init__(self, graph, name, vertex_feature_num=1, mode='train'):
         self.name = name
@@ -69,7 +108,10 @@ class Coex_graph():
             return None
         
         depth1_nodes = list(sampled_nodes)
-        self.node_list = [node] + depth1_nodes  
+        self.node_list = []
+        self.node_list = [node] + depth1_nodes
+        self.center = node
+        self.first_n = depth1_nodes
         
         depth2_nodes = []
         for i in depth1_nodes:
@@ -104,13 +146,9 @@ class Coex_graph():
        
     def vis_sampled_nodes(self):
         node_list = self.node_list
+        print(len(node_list))
         k = self.graph.subgraph(node_list)
-        pos = nx.spring_layout(self.graph)
-        
-        nx.draw_networkx_nodes(k, pos, node_list=k.nodes())
-        
-        plt.axis('off')
-        plt.savefig('visual_sample')
+        visualize_network(k, self.center, self.first_n)
         
     
     def neighbor_sampling(self, node, sampling_num=None):

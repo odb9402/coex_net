@@ -3,6 +3,7 @@ import pandas as pd
 import networkx as nx
 import random
 import math
+from operator import itemgetter
 from models.define_model import *
 
 def load_humanbase_coex_data(file_name):
@@ -27,6 +28,81 @@ def load_humanbase_coex_data(file_name):
     
     return coex_graph
 
+
+def update_disease_associations(coex_graph):
+    all_gene_disease = pd.read_csv("all_gene_disease_associations.tsv", sep='\t').dropna()
+    gene_disease_arry = np.array(all_gene_disease[['geneId','diseaseClass']]).tolist()
+    geneid_disease_dict = dict()
+
+    i = 0
+    while True:
+        if i > len(gene_disease_arry) - 1:
+            break
+        if ';' in gene_disease_arry[i][1]:
+            gene_disease_arry[i][1] = gene_disease_arry[i][1].split(';')
+        else:
+            gene_disease_arry[i][1] = [gene_disease_arry[i][1]]
+        i += 1
+
+    i = 0
+    while True:
+        if i + 1 > len(gene_disease_arry) - 1:
+            break
+        if gene_disease_arry[i][0] == gene_disease_arry[i+1][0]:
+            gene_disease_arry[i][1] = gene_disease_arry[i][1] + gene_disease_arry[i+1][1]
+            gene_disease_arry.pop(i+1)
+        else:
+            i += 1
+
+    disease_list = []
+    for i in gene_disease_arry:
+        i[1] = list(set(i[1]))
+        disease_list += list(set(i[1]))
+    disease_list = list(set(disease_list))
+    gene_features = []
+    
+    for i in range(len(gene_disease_arry)):
+        disease_one_hot = [ 0.1 for x in range(len(disease_list))]
+        for j in range(len(disease_list)):
+            if disease_list[j] in gene_disease_arry[i][1]:
+                disease_one_hot[j] = 0.9
+        gene_features.append((gene_disease_arry[i][0],disease_one_hot))
+
+    gene_features=  sorted(gene_features, key=itemgetter(0))
+    
+    print("Update disease assiciations vectors . . .")
+    bar = pgb.ProgressBar(max_value=len(coex_graph.nodes))
+    prog = 0
+    
+    missed_nodes = []
+    for v in coex_graph.nodes:
+        check_in = False
+        start = 0
+        end = len(gene_features)
+        mid = int((start+end)/2)
+        while (end-start) > 1:
+            mid = int((start+end)/2)
+            if int(v) > gene_features[mid][0]:
+                start = mid
+            elif int(v) < gene_features[mid][0]:
+                end = mid
+            else:
+                nx.set_node_attributes(coex_graph,
+                                      {v: dict(zip(range(29), gene_features[mid][1]))})
+                check_in = True
+                break
+        if not check_in:
+            #nx.set_node_attributes(coex_graph,{v: {'dpi' : 0.5, 'dsi': 0.5}})
+            missed_nodes.append(v)
+            check_in = False
+            
+        prog += 1
+        bar.update(prog)
+    for n in missed_nodes:
+        coex_graph.remove_node(n)
+        
+    return coex_graph
+   
 
 def update_disease_features_coex(file_name, coex_graph):
     """
@@ -101,6 +177,7 @@ def update_gene_features_coex(file_name, coex_graph):
         
     return coex_graph
 
+
 def visualize_network(net, edge_width_scale=1):
     """
     
@@ -119,7 +196,7 @@ def visualize_network(net, edge_width_scale=1):
     nx.draw_networkx_nodes(net, pos, node_list=net.nodes(), node_size=20)
     
     plt.axis('off')
-    plt.show()
+    plt.savefig('visual_sample')
 
     
 def pos_neg_ratio(graph):
@@ -161,7 +238,7 @@ def mini_batch_load(candidate_nodes, graph, batch_size=1, is_test=False):
         while True:
             random_node = random.choice(candidate_nodes)
             random_node_features = np.array(
-                list(graph.graph.nodes(data=True)[random_node].values()))[0].reshape(1,FLAGS.output_dim)
+                list(graph.graph.nodes(data=True)[random_node].values()))[2:30].reshape(1,FLAGS.output_dim)
             feed_data = graph.feed_data_load(random_node, node_nums=(FLAGS.neighbors_1, FLAGS.neighbors_2))
             if feed_data != None:
                 break
@@ -180,14 +257,14 @@ def mini_batch_load(candidate_nodes, graph, batch_size=1, is_test=False):
     if is_test:
         dropout_prob = 1
     else:
-        dropout_prob = 0.6 
+        dropout_prob = 0.8 
         
     feed_forward_dict = {target_node: target_node_batch,
                   neighbor1: neighbor1_batch, #feed_data[0].reshape(neighbor1.shape),
                   edge_weight1: edge_weight1_batch, #feed_data[1].reshape(edge_weight1.shape),
                   neighbor2: neighbor2_batch, #feed_data[2].reshape(neighbor2.shape),
                   edge_weight2: edge_weight2_batch, #feed_data[3].reshape(edge_weight2.shape),
-                  loss_weight: math.sqrt(pos_neg_ratio(graph)),
+                  loss_weight: 1,#math.sqrt(pos_neg_ratio(graph)),
                   is_train_step: not is_test,
                   p_dropout: dropout_prob}
     

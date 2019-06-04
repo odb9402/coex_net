@@ -16,18 +16,18 @@ from models.define_graph import Coex_graph
 flags = tf.app.flags
 FLAGS = flags.FLAGS
 flags.DEFINE_float('learning_rate', 0.0004, '')
-flags.DEFINE_integer('output_dim', 1, '')
-flags.DEFINE_integer('feature_num', 3, '')
-flags.DEFINE_integer('batch_size', 100, '')
+flags.DEFINE_integer('output_dim', 28, '')
+flags.DEFINE_integer('feature_num', 31, '')
+flags.DEFINE_integer('batch_size', 5, '')
 flags.DEFINE_integer('max_steps', 1, '')
 flags.DEFINE_float('dropout', 0.6, '')
 flags.DEFINE_integer('eval_every', 20, '')
 flags.DEFINE_integer('epochs', 3000, '')
-flags.DEFINE_integer('neighbors_1', 20, '')
-flags.DEFINE_integer('neighbors_2', 15, '')
+flags.DEFINE_integer('neighbors_1', 10, '')
+flags.DEFINE_integer('neighbors_2', 5, '')
 
-flags.DEFINE_integer('n2_features', 30,'')
-flags.DEFINE_integer('n1_features', 40,'')
+flags.DEFINE_integer('n2_features', 300,'')
+flags.DEFINE_integer('n1_features', 1000,'')
 
 ### Tensor shape :: (batch_size, number of node, feature_num)
 
@@ -51,9 +51,9 @@ neighbor1_weight = tf.get_variable("neighbor_weight_11", shape=[FLAGS.feature_nu
                     initializer=tf.contrib.layers.variance_scaling_initializer(factor=1.0, mode='FAN_AVG', uniform='True'))
 neighbor1_weight2 = tf.get_variable("neighbor_weight_12", shape=[FLAGS.n1_features, FLAGS.n1_features], 
                     initializer=tf.contrib.layers.variance_scaling_initializer(factor=1.0, mode='FAN_AVG', uniform='True'))
-aggregated2_weight1 = tf.get_variable("aggregated21_weight", shape=[FLAGS.n1_features+FLAGS.n2_features, 10],
+aggregated2_weight1 = tf.get_variable("aggregated21_weight", shape=[FLAGS.n1_features+FLAGS.n2_features, 100],
                     initializer=tf.contrib.layers.variance_scaling_initializer(factor=1.0, mode='FAN_AVG', uniform='True'))
-aggregated2_weight2 = tf.get_variable("aggregated22_weight", shape=[10, FLAGS.output_dim], 
+aggregated2_weight2 = tf.get_variable("aggregated22_weight", shape=[100, FLAGS.output_dim], 
                     initializer=tf.contrib.layers.variance_scaling_initializer(factor=1.0, mode='FAN_AVG', uniform='True'))
 
 neighbor2_bias = tf.get_variable("neighbor_bias_21", shape=[FLAGS.n2_features],
@@ -64,9 +64,7 @@ neighbor1_bias = tf.get_variable("neighbor_bias_11", shape=[FLAGS.n1_features],
                     initializer=tf.contrib.layers.variance_scaling_initializer(factor=1.0, mode='FAN_AVG', uniform='True'))
 neighbor1_bias2 = tf.get_variable("neighbor_bias_12", shape=[FLAGS.n1_features],
                     initializer=tf.contrib.layers.variance_scaling_initializer(factor=1.0, mode='FAN_AVG', uniform='True'))
-aggregated2_bias = tf.get_variable("aggregated2_bias1", shape=[10],
-                    initializer=tf.contrib.layers.variance_scaling_initializer(factor=1.0, mode='FAN_AVG', uniform='True'))
-aggregated2_bias2 = tf.get_variable("aggregated2_bias2", shape=[FLAGS.output_dim],
+aggregated2_bias = tf.get_variable("aggregated2_bias1", shape=[100],
                     initializer=tf.contrib.layers.variance_scaling_initializer(factor=1.0, mode='FAN_AVG', uniform='True'))
 
 #target_weight = tf.get_variable("target_weight", shape=[FLAGS.feature_num, FLAGS.feature_num],
@@ -94,11 +92,11 @@ tensorSummaries("Neighbor1_bias2",neighbor1_bias2)
 tensorSummaries("Neighbor2_bias1",neighbor2_bias)
 tensorSummaries("Neighbor2_bias2",neighbor2_bias2)
 tensorSummaries("AGG_bias1",aggregated2_bias)
-tensorSummaries("AGG_bias2",aggregated2_bias2)
 
 
 def aggregator2(neighbors1, neighbors2, edge_weights, neighbor_weights, neighbor_bias, node_weights, node_bias):
-    edge_weights_expanded = tf.expand_dims(edge_weights, -1)
+    edge_weights_expanded = tf.math.sqrt(edge_weights)
+    edge_weights_expanded = tf.expand_dims(edge_weights_expanded, -1)
     weighted_neighbors = tf.multiply(neighbors2, edge_weights_expanded)
     neighbors2_mean = tf.reduce_mean(weighted_neighbors, axis=2)
     
@@ -106,17 +104,17 @@ def aggregator2(neighbors1, neighbors2, edge_weights, neighbor_weights, neighbor
     neighbors2_mean = tf.matmul(neighbors2_mean, neighbor_weights)
     neighbors2_mean = tf.nn.bias_add(neighbors2_mean, neighbor_bias)
     
-    #neighbors2_mean = tf.nn.leaky_relu(neighbors2_mean)
-    #neighbors2_mean = tf.matmul(neighbors2_mean, neighbor2_weight2)
-    #neighbors2_mean = tf.nn.bias_add(neighbors2_mean, neighbor2_bias2)
+    neighbors2_mean = tf.nn.leaky_relu(neighbors2_mean)
+    neighbors2_mean = tf.matmul(neighbors2_mean, neighbor2_weight2)
+    neighbors2_mean = tf.nn.bias_add(neighbors2_mean, neighbor2_bias2)
     
     neighbors1 = tf.reshape(neighbors1, [FLAGS.batch_size * FLAGS.neighbors_1, FLAGS.feature_num])
     neighbors1 = tf.matmul(neighbors1, node_weights)
     neighbors1 = tf.nn.bias_add(neighbors1, node_bias)
     
-    #neighbors1 = tf.nn.leaky_relu(neighbors1)
-    #neighbors1 = tf.matmul(neighbors1, neighbor1_weight2)
-    #neighbors1 = tf.nn.bias_add(neighbors1, neighbor1_bias2)
+    neighbors1 = tf.nn.leaky_relu(neighbors1)
+    neighbors1 = tf.matmul(neighbors1, neighbor1_weight2)
+    neighbors1 = tf.nn.bias_add(neighbors1, neighbor1_bias2)
     
     neighbors2_mean = tf.reshape(neighbors2_mean, [FLAGS.batch_size, FLAGS.neighbors_1, FLAGS.n2_features])
     neighbors1 = tf.reshape(neighbors1, [FLAGS.batch_size, FLAGS.neighbors_1, FLAGS.n1_features])
@@ -128,8 +126,9 @@ def aggregator2(neighbors1, neighbors2, edge_weights, neighbor_weights, neighbor
     return concated_node
     
     
-def aggregator1(neighbors, edge_weights, neighbor_weights, neighbor_bias):
-    edge_weights_expanded = tf.expand_dims(edge_weights, -1)
+def aggregator1(neighbors, edge_weights, neighbor_weights):
+    edge_weights_expanded = tf.math.sqrt(edge_weights)
+    edge_weights_expanded = tf.expand_dims(edge_weights_expanded, -1)
     weighted_neighbors = tf.multiply(neighbors, edge_weights_expanded)
     neighbors_mean = tf.reduce_mean(weighted_neighbors, axis=1)
     
@@ -142,7 +141,6 @@ def aggregator1(neighbors, edge_weights, neighbor_weights, neighbor_bias):
     neighbors_mean = tf.matmul(neighbors_mean, aggregated2_weight2)
     
     target_node_prediction = tf.reshape(neighbors_mean, [FLAGS.batch_size, 1, FLAGS.output_dim])
-    target_node_prediction = tf.nn.bias_add(target_node_prediction, neighbor_bias)
     #target_node_prediction = tf.nn.relu(neighbors_mean)
     
     return target_node_prediction
@@ -152,7 +150,7 @@ def gcn_model():
     first_aggregated_nodes = aggregator2(neighbor1, neighbor2, edge_weight2,
                                          neighbor2_weight, neighbor2_bias,
                                          neighbor1_weight, neighbor1_bias)
-    target_node = aggregator1(first_aggregated_nodes, edge_weight1, aggregated2_weight1, aggregated2_bias2)
+    target_node = aggregator1(first_aggregated_nodes, edge_weight1, aggregated2_weight1)
     return target_node
     
 def model_summary():
